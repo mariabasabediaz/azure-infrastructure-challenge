@@ -25,3 +25,43 @@ resource "azurerm_log_analytics_workspace" "logs" {
   sku                 = "PerGB2018"
   retention_in_days   = 30
 }
+
+# 4. Perfil de CDN (El "cerebro" del CDN)
+resource "azurerm_cdn_profile" "cdn" {
+  name                = "cdn-profile-${var.environment}"
+  location            = "Global"
+  resource_group_name = azurerm_resource_group.main.name
+  sku                 = "Standard_Microsoft"
+}
+
+# 5. Punto de enlace del CDN (El que hace que la web sea rápida)
+resource "azurerm_cdn_endpoint" "endpoint" {
+  name                = "fsl-challenge-${var.environment}-endpoint"
+  profile_name        = azurerm_cdn_profile.cdn.name
+  location            = "Global"
+  resource_group_name = azurerm_resource_group.main.name
+  origin_host_header  = azurerm_storage_account.storage.primary_web_host
+  is_http_allowed     = true
+  is_https_allowed    = true
+
+  origin {
+    name      = "storageorigin"
+    hostname  = azurerm_storage_account.storage.primary_web_host
+  }
+}
+
+# 6. Envío de Logs (Rerouting logs to Workspace)
+resource "azurerm_monitor_diagnostic_setting" "storage_logs" {
+  name                       = "logs-to-workspace"
+  target_resource_id         = "${azurerm_storage_account.storage.id}/blobServices/default"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.logs.id
+
+  enabled_log {
+    category = "StorageWrite"
+  }
+
+  metric {
+    category = "AllMetrics"
+    enabled  = true
+  }
+}
